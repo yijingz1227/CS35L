@@ -1,0 +1,369 @@
+Lab2 Log
+
+1. Setting up the environmental variables:
+   - run the command 'export LC_ALL='C'
+   - sort -d /usr/share/dict/words > words
+
+2. tr commands
+
+- tr -c 'A-Za-z' '[\n*]'
+  -c: -- complement, means the first complement of SET1 will be used. 
+  'A-Za-z': is set1, and combined with the -c tr will filter every single
+           character except those characters in SET1.
+  '[\n*]': is set2, and actually the whole expression should be written as
+          '[\n*n]' where the second n indicates the number of times
+	  the new-line character repeats itself.
+
+          However, since the second n is not specified in this case,
+	  it(the value of n) shall be interpreted as large enough to extend
+	  the set2-based sequence to the length of the set1-based sequence.
+
+     P.S. the reason that we should use '[\n*]' instead of '\n' is because the
+	  expression '\n' is not portable across different UNIX (like)
+	  platforms. According to https://ss64.com/bash/tr.html, the
+	  behaviour of tr program when SET1 is longer than SET2 is not
+	  necessarily defined in the same way. Under BSD and GNU, the tr
+	  command will take '\n' (SET2) and automatically pad SET2 if SET1
+	  is longer than SET2, which is what GNU's tr has done for us in this
+	  case.
+
+          On the other hand, the bahaviour of tr command is different under
+	  System V. The tr command will ignore all elements in SET1 except
+	  the first element, and map that first element to a single '\n'.
+	  Thus, if we were to run the command tr -c 'A-Za-z' '\n' under
+	  System V's distribution of tr, then we will not get the same result
+	  if we run the command tr -c 'A-Za-z' '[\n*]'.
+
+          In summary, tr -c 'A-Za-z' '\n' is not portable under POSIX2 standard,
+	  while tr -c 'A-Za-z' '[\n*]' is!
+
+   Thus, this command will replace every character in the assign2.html that is
+   not in SET1 with a single new-line character.
+
+- tr -cs 'A-Za-z' '[\n*]'
+  -c: -- complement (explained above)
+  -s: -- squeeze-repeats, will replace each input sequence of repeated character
+         that is listed in the complement of SET1 (enabled by -c) with a
+	 matching character in set 2.
+	 
+   Thus, this command will replace every character in the assign2.html that
+   is not in SET1 with a single new-line character, and then squeeze all
+   repeated consecutive new-line characters and replaced by a single
+   new-line character.
+
+- tr -cs 'A-Za-z' '[\n*]' | sort
+  - this command will replace every character in the assign2.html that is not in
+  SET1 with a single new-line character, and then squeeeze all repreated
+  consecutive new-line chracters down to a single new-line character.
+  - then the standard output of tr is redirected to the sort command where all
+  the character sequence is rearranged according to A-Z a-z order.
+  
+- tr -cs 'A-Za-z' '[\n*]' | sort -u
+  - this command will replace every character in the assign2.html that is not in
+  SET1 with a single new-line character, and then squeeze all repeated
+  consecutive new-line chracters such that only a single new-line chracter
+  is left.
+  - then the standard output of tr is redirected to the sort command where all
+  the character sequence is repositioned according to A-Za-z order.
+  - with the -u option enabled, duplicate copies of the same character sequence
+  will not be recorded, leaving only a unique copy of that sequence.
+  
+- tr -cs 'A-Za-z' '[\n*]' | sort -u | comm - words
+  - this command will replace every character in the assign2.html that is not in
+  SET1 with a single new-line character, and the squeeze all repeated all
+  consecutive new-line characters into a single new-line character.
+  - the the sort -u command will not only sort the ouput of tr and only save
+  a copy of duplicated character sequences.
+  - then the ouput is redirected to command comm, where the ouput is compared
+  with words (the dictionary file), and a three-column ouput is produced.
+  - the first column shows the words that are unique to file1;
+  the second column shows the words that are unique to file2 (there are a lot);
+  and the third column shows the words that are common to both of them.
+  
+- tr -cs 'A-Za-z' '[\n*]' | sort -u | comm -23 - words
+  - this command will replace every character in the assign2.html that is not in
+  SET1 with a single new-line character, and the squeeze all repeated all
+  consecutive new-line characters into a single new-line character.
+  - the the sort -u command will not only sort the ouput of tr and only save
+  a copy of duplicated character sequences.
+  - then the ouput is redirected to command comm, where the ouput is compared
+  with words (the dictionary file), and a one-column output is produced.
+  - due to the -23 flag, the column2 and column3 is suppressed, and the ouput
+  only shows the words that are unique in file1
+  - which means the final output gives words that are in file1 but not in the
+  dictionary. -> "misspelled English words"
+  
+============================================================================
+Hawaiian word:
+
+To run any script: chmod +x <scriptname>
+
+buildwords:
+#! /bin/sh
+
+tr -d '@' $1 | tr \` \' | tr '\n' '@' |
+sed -r 's/[[:space:]]*<tr>@[[:space:]]*<td>[^@]*<[/]td>/!eng!/g'|
+sed -r 's/!eng!@[[:space:]]*<td>/!!mark!!/g'| tr '@' '\n' |
+grep '!!mark!![^@]*<[/]td>' | sed -r 's/<[^>]*>//g; s/!!mark!!//g' |
+tr ' ' '\n' | tr ',' '\n' | tr [:upper:] [:lower:] |
+tr -c "p k ' m n w l h a e i o u \n" '[@*]' |
+sed 's/.*@.*//g'|  sort -u | sed '/^[[:space:]]*$/d'
+
+
+
+Explanation of each command:
+
+tr -d '@' $1 #read from standard input and delete all @ characters in the file
+             #since there is no @ in Hawaiian vocab, we will use @ as a special
+	     #character
+
+tr \` \'     #replace the ASCII grave accent as if it were apostrophe
+
+tr '\n' '@'  #replace the newline character to @ such that the whole html
+             #file is now in one line
+
+sed -r 's/[[:space:]]*<tr>@[[:space:]]*<td>[^@]*<[/]td>/!eng!/g'
+             #replace the <tr> <td>Eword</td> pattern to be !eng!
+
+sed -r 's/!eng!@[[:space:]]*<td>/!!mark!!/g'
+             #if marked with !eng!, then the corresponding
+	     #!eng!@   <td>Hword</td>  pattern contains a Hword
+	     #mark the first part of the pattern to be !!mark!!
+	     #so now it is !!mark!!Hword</td>
+
+tr '@' '\n' #reverse the @ back to new-line character
+
+grep '!!mark!![^@]*<[/]td>'
+            #find the pattern with !!mark!!Hword</td>
+
+sed -r 's/<[^>]*>//g; s/!!mark!!//g'
+            #delete all !!mark!! and <tags>
+	 
+tr ' ' '\n' | tr ',' '\n'
+            #replace all commas and spaces in Hwords with
+	    #new line characters, so they are now viewed
+	    #as separate words
+
+tr [:upper:] [:lower:]
+            #replace all upper alphabets to lower alphabets
+
+tr -c "p k ' m n w l h a e i o u \n" '[@*]'
+            #if a char is not found in Hawaiian letter set
+	    #then replace it with @
+
+sed 's/.*@.*//g' #remove anything with a '@' they are Hawaiian
+
+sort -u         #sort and remove duplicate
+
+
+sed '/^[[:space:]]*$/d'
+            #and finally, remove all the unnecessary whitespaces
+
+The command I used for Hawaiian spell checker:
+
+$ cat assign2.html | tr -cs 'A-Za-z' '[\n*]' | tr [:upper:] [:lower:] | sort -u|
+  comm -23 - hwords | sed -r '/^[[:space:]]*$/d' > hresult.txt
+
+In order to find out the number of mispelled Hawaiian word:
+
+$ wc -l hresult.txt // which gives me 405 words.
+
+Similarly, for the English spell checker:
+
+$ cat assign2.html | tr -cs 'A-Za-z' '[\n*]' | sort -u | comm -23 - words |
+  sed -r '/^[[:space:]]*$/d' > eresult.txt
+
+$ wc -l eresult.txt //gives me 80 words
+
+In order to find out words that are "misspelled" as English, but not as Hawaiian
+                                 or "misspelled" as Hawaiian but not as English
+"Misspelled English words"
+--
+$ comm -12 eresult.txt hwords #3 results
+"halau" is a misspelled English words but not as Hawaiian.
+"lau" is a misspelled English words but not as Hawaiian.
+"wiki"is a misspelled English words but not as Hawaiian.
+
+"Misspelled Hawaiian words"
+--
+$ comm -12 hresult.txt words > lab2.txt  #gives 370 words
+Some examples will be unique, under, two, true.. they are misspelled as Hawaiian
+but not as English.
+================================================================================
+Homework:
+
+The general approach of my sameln script:
+
+Use find command to search in D (-maxdepth 1 diables recursive search in subdir)
+and obtain a list of files in D, sort them so that the files whose name is
+lexicographilly first will be preserved.
+
+Use sed to read the list of files line by line, obtaining an absolte path
+
+Use a nested for loop to compare each file with the others,
+if the permission to read/write is not there, echo error
+else
+  if they are the same, remove the duplicate and set the hardlink flag
+  
+In the end, create hard link according to the flag.
+
+The script I wrote is able to handle most special characters except new-line
+character, as this script relies on sed and behaves line-based command.
+
+*On piazza, one of the TAs has said do not consider \n in filenames.
+
+Some notes:
+
+-double quotes do not suppress the $ \
+
+-it is also important as double quotes prevent further impretation of paths
+
+-single quotes takes literal meaning
+
+-Variable=$(commands)
+
+-arguments are $1 $2 $3....$10 and above need {}
+
+-for loop and test expressions are buddies...
+
+--o for or -a for &&, or separate two test expressions
+
+- man test
+
+- man sed
+
+The test cases that I have used (scripts,results,etc) is included in this log.
+===========================================================================
+
+Building the testcase to test sameln:
+
+#! /bin/sh
+
+cp assign2.html tc
+cp tc/assign2.html tc/assign3.html
+cp tc/assign2.html tc/assign4.html
+chmod -rw tc/assign2.html
+
+cp command1.txt tc
+cp tc/command1.txt tc/.A
+cp tc/command1.txt tc/.B
+cp tc/command1.txt tc/.C
+
+cp eresult.txt tc
+cp tc/eresult.txt tc/*A
+cp tc/eresult.txt tc/*B
+cp tc/eresult.txt tc/*C
+chmod -rw tc/*C
+
+cp hresult.txt tc
+cp tc/hresult.txt tc/'__A'
+cp tc/hresult.txt tc/'__B'
+
+cp lab2.log tc
+
+cp hwords tc #for special character generation
+cp tc/hwords tc/''$'\342\200\223''AAA' #need to copy manually
+cp tc/hwords tc/''$'\342\200\223''BBB' 
+
+cp words tc
+cp tc/words tc/''$'\342\200\223''CCC'
+cp tc/words tc/''$'\342\200\223''DDD'
+rm tc/words
+chmod +rw tc/''$'\342\200\223''CCC'
+chmod +rw tc/''$'\342\200\223''DDD'
+
+mkdir tc/token
+cp tc/lab2.log tc/token
+
+echo "creation complete"
+
+Image of 'tc' dir after running tcscript with certain unique files:
+
+-rw-r--r--  1 classtzn class     648 Jan 28 16:28 '*A'
+-rw-r--r--  1 classtzn class     648 Jan 28 16:38 '*B'
+----------  1 classtzn class     648 Jan 28 16:27 '*C'
+drwxr-xr-x  3 classtzn class    4096 Jan 28 16:39  .
+drwxr-xr-x 11 classtzn class    8192 Jan 28 16:38  ..
+-rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .A
+-rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .B
+-rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .C
+-rw-r--r--  1 classtzn class    2601 Jan 28 16:38  __A
+-rw-r--r--  1 classtzn class    2601 Jan 28 16:38  __B
+----------  1 classtzn class    8668 Jan 28 16:27  assign2.html
+-rw-r--r--  1 classtzn class    8668 Jan 28 16:27  assign3.html
+-rw-r--r--  1 classtzn class    8668 Jan 28 16:38  command1.txt
+-rw-r--r--  1 classtzn class     648 Jan 28 16:38  eresult.txt
+-rw-r--r--  1 classtzn class    2601 Jan 28 16:38  hresult.txt
+-rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords
+-rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords_hardlink
+-rw-r--r--  1 classtzn class    9440 Jan 28 16:38  lab2.log
+drwxr-xr-x  2 classtzn class    4096 Jan 28 16:27  token
+-rw-r--r--  1 classtzn class    1252 Jan 28 16:38 ''$'\342\200\223''AAA'
+-rw-r--r--  1 classtzn class    1252 Jan 28 16:38 ''$'\342\200\223''BBB'
+-rw-r--r--  1 classtzn class 4882590 Jan 28 16:27 ''$'\342\200\223''CCC'
+-rw-r--r--  1 classtzn class 4882590 Jan 28 16:38 ''$'\342\200\223''DDD'
+
+subdir image:
+[classtzn@lnxsrv09 ~/CS35L/Lab2/tc]$ ls -la token
+total 20
+drwxr-xr-x 2 classtzn class 4096 Jan 28 16:41 .
+drwxr-xr-x 3 classtzn class 4096 Jan 28 16:39 ..
+-rw-r--r-- 1 classtzn class 9440 Jan 28 16:41 lab2.log
+
+inode image:
+
+22903322 -rw-r--r--  1 classtzn class     648 Jan 28 16:28 '*A'
+22903321 -rw-r--r--  1 classtzn class     648 Jan 28 16:38 '*B'
+22903324 ----------  1 classtzn class     648 Jan 28 16:27 '*C'
+11914119 drwxr-xr-x  3 classtzn class    4096 Jan 28 16:39  .
+ 2979419 drwxr-xr-x 11 classtzn class    8192 Jan 28 16:41  ..
+22903318 -rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .A
+22903317 -rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .B
+22903319 -rw-r--r--  1 classtzn class    8668 Jan 28 16:38  .C
+22903328 -rw-r--r--  1 classtzn class    2601 Jan 28 16:38  __A
+22903325 -rw-r--r--  1 classtzn class    2601 Jan 28 16:38  __B
+22903314 ----------  1 classtzn class    8668 Jan 28 16:27  assign2.html
+22903315 -rw-r--r--  1 classtzn class    8668 Jan 28 16:27  assign3.html
+22903316 -rw-r--r--  1 classtzn class    8668 Jan 28 16:38  command1.txt
+22903320 -rw-r--r--  1 classtzn class     648 Jan 28 16:38  eresult.txt
+22903323 -rw-r--r--  1 classtzn class    2601 Jan 28 16:38  hresult.txt
+22903327 -rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords
+22903327 -rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords_hardlink
+22903326 -rw-r--r--  1 classtzn class    9440 Jan 28 16:38  lab2.log
+22903330 drwxr-xr-x  2     4096 Jan 28 16:41  token
+22903331 -rw-r--r--  1     1252 Jan 28 16:38 ''$'\342\200\223''AAA'
+22903332 -rw-r--r--  1     1252 Jan 28 16:38 ''$'\342\200\223''BBB'
+22903329 -rw-r--r--  1  4882590 Jan 28 16:27 ''$'\342\200\223''CCC'
+22903334 -rw-r--r--  1  4882590 Jan 28 16:38 ''$'\342\200\223''DDD'
+
+Script output:
+[classtzn@lnxsrv09 ~/CS35L/Lab2]$ ./sameln ~/CS35L/Lab2/tc
+/u/eng/class/classtzn/CS35L/Lab2/tc/*C permission not granted.
+/u/eng/class/classtzn/CS35L/Lab2/tc/assign2.html permission not granted.
+End of sameln
+
+
+Result:
+22903322 -rw-r--r--  2 classtzn class     648 Jan 28 16:28 '*A'
+22903322 -rw-r--r--  2 classtzn class     648 Jan 28 16:28 '*A_hardlink'
+22903324 ----------  1 classtzn class     648 Jan 28 16:27 '*C'
+11914119 drwxr-xr-x  3 classtzn class    4096 Jan 28 16:43  .
+ 2979419 drwxr-xr-x 11 classtzn class    8192 Jan 28 16:42  ..
+22903318 -rw-r--r--  2 classtzn class    8668 Jan 28 16:38  .A
+22903318 -rw-r--r--  2 classtzn class    8668 Jan 28 16:38  .A_hardlink
+22903328 -rw-r--r--  2 classtzn class    2601 Jan 28 16:38  __A
+22903328 -rw-r--r--  2 classtzn class    2601 Jan 28 16:38  __A_hardlink
+22903314 ----------  1 classtzn class    8668 Jan 28 16:27  assign2.html
+22903315 -rw-r--r--  1 classtzn class    8668 Jan 28 16:27  assign3.html
+22903327 -rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords
+22903327 -rw-r--r--  2 classtzn class    1252 Jan 28 16:38  hwords_hardlink
+22903326 -rw-r--r--  1 classtzn class    9440 Jan 28 16:38  lab2.log
+22903330 drwxr-xr-x  2     4096 Jan 28 16:41  token
+22903329 -rw-r--r--  2  4882590 Jan 28 16:27 ''$'\342\200\223''CCC'
+22903329 -rw-r--r--  2  4882590 Jan 28 16:27 ''$'\342\200\223''CCC_hardlink'
+[classtzn@lnxsrv09 ~/CS35L/Lab2/tc]$ cd token
+[classtzn@lnxsrv09 ~/CS35L/Lab2/tc/token]$ ls
+lab2.log
+
+*some entries shorten for compilance to 80 sacred rule.
+
