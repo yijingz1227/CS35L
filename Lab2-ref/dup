@@ -1,0 +1,57 @@
+#! /bin/sh
+
+getAFile() {
+    find $1 -maxdepth 1 -name '*' -type f | sort | sed -n $2p 
+}
+
+countLines() {
+    wc -l $1 | tr -d ' ' | tr -cd '0-9'
+}
+
+getPathAndCompare() {
+    FOUND_DUPLICATE=0
+    COUNTER=$2
+    let COUNTER=COUNTER+1
+    NUMBER=$(find $1 -maxdepth 1 -type f | wc -l | tr -d ' ' | tr -cd '0-9')
+    FILE1=$(getAFile $1 $2)
+    if [ -r "$FILE1"  -o  -w "$FILE1" ]; then
+       while [ $COUNTER -le $NUMBER ];do
+	   FILE2=$(getAFile $1 $COUNTER)
+	   if [ -r "$FILE2"  -o  -w "$FILE2" ]; then
+	       cmp -s "$FILE1" "$FILE2"
+               if [ $? -eq 0 ]; then
+		   removeFiles $FILE2
+		   FOUND_DUPLICATE=1
+		   let COUNTER=COUNTER-1
+               fi
+	   fi
+	   let COUNTER=COUNTER+1
+       done
+    else
+       echo "$FILE1 permission not granted."
+    fi
+    createHardLink $FOUND_DUPLICATE $FILE1
+}
+
+createHardLink() {
+    if [ $1 -eq 1 ]; then
+	ln "$2" "$2_hardlink"
+    fi
+    
+}
+removeFiles() {
+    rm "$1"
+}
+
+compareAllFiles() {
+    COUNTER2=1
+    NUMBER2=$(find $1 -maxdepth 1 -type f | wc -l | tr -d ' ' | tr -cd '0-9')
+    while [ $COUNTER2 -le $NUMBER2 ]; do
+	getPathAndCompare $1 $COUNTER2
+	NUMBER2=$(find $1 -maxdepth 1 -type f | wc -l | tr -d ' ' | tr -cd '0-9')
+	let COUNTER2=COUNTER2+1
+    done
+}
+
+compareAllFiles $1
+echo "End of sameln"

@@ -1,0 +1,19 @@
+#! /bin/sh
+
+
+tr -d '@' $1 |
+    tr \` \' |
+    tr '\n' '@'|
+    sed -r 's/[[:space:]]*<tr>@[[:space:]]*<td>[^@]*<[/]td>/!eng!/g' |
+    sed -r 's/!eng!@[[:space:]]*<td>/!!mark!!/g'| tr '@' '\n' |
+    grep '!!mark!![^@]*<[/]td>' | sed -r 's/<[^>]*>//g; s/!!mark!!//g' |
+    tr ' ' '\n' | tr ',' '\n' |
+    tr [:upper:] [:lower:] |
+    tr -c "p k ' m n w l h a e i o u \n" '[@*]' |
+    sed 's/.*@.*//g'|
+    sort -u |
+    sed '/^[[:space:]]*$/d'
+
+
+
+
