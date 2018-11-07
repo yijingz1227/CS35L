@@ -1,0 +1,44 @@
+2018-02-10 Yijing Zhou <yijingzhou@g.ucla.edu>
+ * timespec.h (timespec_cmp) :
+   - I added additonal control statements to detect possible positive 
+     or negative integer overflow, applying an saturation approach
+   - if there is a positive integer overflow resulted from calculation of diff, 
+     INT_MAX as defined by limits.h will be returned.
+   - similarly, if there is a negative integer overflow resulted from calculation
+     of diff, INT_MIN as defined by limits.h will be returend. 
+   - this shall not affect the overrall behaviour of ls, but to 
+     improve it, as now it can correclty compare two item's elapsed
+     seconds and the sign of the diff can tell the relative order 
+     between two items.
+   - However, for programs which expect the diff to follow -fwrapv,
+     timespec_cmp will now cause undefined behaviour. 
+   - Reason why I did not apply saturation method to tv_nsec:
+       by assumption the time stamp standard of tv_nsec under GNU project is in the 
+     range of 0...999999999 (quoted from opencoverage.net), and since 32-int
+     is perfectly capable of covering the values within this range, there is
+     no need to apply saturation method. 
+-----------------------------------------------------------------------------
+--- ./lib/timespec.h	2005-09-21 23:05:39.000000000 -0700
++++ /u/eng/class/classtzn/CS35L/Lab4/timespec.h	2018-02-10 17:07:09.054411000 -0800
+@@ -40,12 +40,20 @@
+ };
+ # endif
+ 
++#include <limits.h>
++
+ /* Return negative, zero, positive if A < B, A == B, A > B, respectively.
+    Assume the nanosecond components are in range, or close to it.  */
+ static inline int
+ timespec_cmp (struct timespec a, struct timespec b)
+-{
++{ 
+   int diff = a.tv_sec - b.tv_sec;
++  //saturation approach 
++  if ( a.tv_sec > 0 && b.tv_sec < 0 && diff <= 0) {
++    return INT_MAX;
++  } else if ( a.tv_sec < 0 && b.tv_sec > 0 && diff >= 0) {
++    return INT_MIN;
++  }
+   return diff ? diff : a.tv_nsec - b.tv_nsec;
+ }
+

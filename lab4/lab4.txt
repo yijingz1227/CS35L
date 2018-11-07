@@ -1,0 +1,274 @@
+
+1. Download the old verison of the coreutils by
+   $ wget http://web.cs.ucla.edu/classes/winter17/cs35L/assign
+                                           /coreutils-with-bug.tar.gz
+
+   Untar it (include -z command since it is gnu-zipped)
+   $ tar -xzvf coreutils-with-bug.tar.gz
+
+   Switch to the dir coreutils-with-bug:
+   $ cd coreutils-with-bug
+
+   Make and install the coreutils in the user defined dir
+   $ ./configure --prefix=/u/eng/class/classtzn/CS35L/Lab4
+   $ make
+
+Error Log ( reformatted ):
+make  all-recursive
+make[1]: Entering directory '/w/home.08/class/classtzn/CS35L/Lab4/coreutils-with-bug'
+Making all in lib
+make[2]: Entering directory '/w/home.08/class/classtzn/CS35L/Lab4/coreutils-with-bug/lib'
+make  all-am
+
+make[3]: Entering directory '/w/home.08/class/classtzn/CS35L/Lab4/coreutils-with-bug/lib'
+if gcc -DHAVE_CONFIG_H
+-DLIBDIR=\"/u/eng/class/classtzn/CS35L/Lab4/lib\" -I. -I. -I..  -I.. -I.
+-g -O2 -MT utimecmp.o -MD -MP -MF ".deps/utimecmp.Tpo" -c -o
+utimecmp.o utimecmp.c; \
+
+then mv -f ".deps/utimecmp.Tpo" ".deps/utimecmp.Po";
+else rm -f ".deps/utimecmp.Tpo"; exit 1; fi
+
+================================================================================
+In file included from utimecmp.c:41:0:
+utimens.h:2:5: error: conflicting types for 'futimens'
+ int futimens (int, char const *, struct timespec const [2]);
+     ^~~~~~~~
+In file included from utimecmp.h:25:0,
+                 from utimecmp.c:25:
+/usr/include/sys/stat.h:373:12:note: previous declaration of 'futimens' was here
+ extern int futimens (int __fd, const struct timespec __times[2]) __THROW;
+            ^~~~~~~~
+================================================================================
+make[3]: *** [Makefile:659: utimecmp.o] Error 1
+make[3]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug/lib'
+make[2]: *** [Makefile:414: all] Error 2
+make[2]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug/lib'
+make[1]: *** [Makefile:419: all-recursive] Error 1
+make[1]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug'
+make: *** [Makefile:357: all] Error 2
+
+If I only apply the renaming patch to fixing the futimens, then the following
+error will occur:
+================================================================================
+tee.c:34:13: error: conflicting types for 'tee'
+ static bool tee (int nfiles, const char **files);
+             ^~~
+In file included from /usr/include/bits/fcntl.h:61:0,
+                 from /usr/include/fcntl.h:35,
+                 from system.h:145,
+                 from tee.c:25:
+/usr/include/bits/fcntl-linux.h:351:16:note: previous declaration
+of 'tee' was here
+ extern ssize_t tee (int __fdin, int __fdout, size_t __len,
+                ^~~
+================================================================================
+make[3]: *** [Makefile:1389: tee.o] Error 1
+make[3]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug/src'
+make[2]: *** [Makefile:905: all] Error 2
+make[2]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug/src'
+make[1]: *** [Makefile:419: all-recursive] Error 1
+make[1]: Leaving directory '/w/home.08/class/classtzn/CS35L/Lab4
+/coreutils-with-bug'
+make: *** [Makefile:357: all] Error 2
+
+Applying the patch:
+ $ cd coreutils-with-bug
+ $ wget http://web.cs.ucla.edu/classes/winter17/cs35L/assign/coreutils.diff
+ $ patch -p0 < coreutil.diff
+
+  patching file lib/utimens.c
+  patching file lib/utimens.h
+  patching file src/copy.c
+  patching file src/tee.c
+  patching file src/touch.c
+
+The patch did fix the problem.
+================================================================================
+Answer to "What problems did you have when building it as-is,
+and why did the renaming patch fix them?":
+
+The problem I had when building coreutils-with-bug is that some of the source files
+declared functions with the same function name but different return type,
+and yet all of them are properly implemented.
+(i.e. not just forward declared but also implemented, strong symbol).
+
+This will cause a symbol resolution problem, as the compiler could not know
+which function to associate with the symbol "futimen" or "tee", as all
+options seem to be valid. Thus, the compiler throw this error to the
+programmer so that we have to make adjustments to make the intention clearer.
+
+The renaming patch basically changes all conflicting futimen functions
+declared or used in futimen.c timespec.h and touch.c; all conflicting
+functions with name "tee" in tee.c and gives them a different name.
+
+Thus, when we compile again with this patch implemented, the compiler
+can now associate those functions with a different symbol
+"coreutil_futimen" and "coreutil_tee", avoiding the symbol resolution
+conflict ("same name but differnt type" problem) we had before. 
+
+
+--------------------------------------------------------------------------------
+Reproducint the bug in ls and fixing it:
+
+$ tmp=$(mktemp -d)
+$ cd $tmp
+$ touch -d '1918-11-11 11:00 GMT' wwi-armistice
+$ touch now
+$ sleep 1
+$ touch now1
+$ TZ=UTC0 ~/CS35L/Lab4/coreutils-with-bug/src/ls -lt --full-time
+  wwi-armistice now now1
+  
+-rw-r--r-- 1 classtzn class 0 1918-11-11 11:00:00.000000000 +0000 wwi-armistice
+-rw-r--r-- 1 classtzn class 0 2018-02-10 23:02:02.512017792 +0000 now1
+-rw-r--r-- 1 classtzn class 0 2018-02-10 23:01:56.179911962 +0000 now
+
+
+================================================================================
+Tracking the source of the error using gdb:
+Since -t option is sorting mtime, reading src code of ls.c give me the function
+to break timespec_cmp in timespec.h
+$(gdb) break timespec_cmp
+$(gdb) set disassemble-next-line on
+$(gdb) run -lt --full-time
+
+First compasrison (call to compare_mtime):
+rsi            0x616260         * points to object b now1
+rdi            0x6161b0         * points to object a now
+
+- reading the assembly code, the offset to tv_sec is 0x60
+
+(gdb) p/x *0x616210
+$1 = 0x5a7f79ea        * a.tv_sec -> now1
+(gdb) p/x *0x6162c0
+$2 = 0x5a7f79e4        * b.tv_sec -> now
+
+(gdb) p/x diff
+$3 = 0xfffffffa
+(gdb) p/d diff
+$4 = -6
+                                           
+the first comparison is probably comparing (now - now1) == -6
+                                            now < now1.
+					    b < a if negative
+
+Second comparison:
+
+rsi            0x6161b0 *points to object b -> now
+rdi            0x616100 *points to object a -> wwi.armistice
+
+-reading their tv_sec
+
+(gdb) p/x *0x616160
+$5 = 0x9fcef830
+(gdb) p/d *0x616160
+$6 = -1613826000     *a.tv_sec -> wwi.armistice
+
+
+(gdb) p/x *0x616210
+$7 = 0x5a7f79ea
+(gdb) p/d *0x616210
+$8 = 1518303722      *b.tv_sec -> now
+
+(gdb) p/x diff
+$9 = 0xbab081ba
+(gdb) p/d diff
+$10 = -1162837574
+
+Expected result: www.armistice < now -> a < b -> some positive value
+which should be  b.tv_sec - a.tv_sec =  1518303722 - (-1613826000)
+                                     = 3,132,129,722 (> +2,147,483,647)	
+Due to integer overflow, it becomes -1162837574
+Checking: assuming -fwrapv behaviour 3,123,129722 -INT_MAX + INT_MIN -1
+          = -1162837574
+
+Conclusion: the timespec_cmp leads to an overflow calculation to type int,
+and thus the errorneous result is obtained, where a giant positive integer
+is treated like a negative int , which suggests www.armistice has more
+elpased seconds than now1, which is not true.
+
+While my first attempt is to fix everything with a long, but I soon realize
+that the way ls work is that it is using qsort which only accepts a
+comparator function that returns an int.
+
+Thus, I changed my approach and used the saturation method.
+When there is a positive/negative overflow, instead of returning the -fwrapv
+result, the new timespec_cmp will return INT_MIN or INT_MAX accordingly
+to represent the relative order between the two items.
+
+
+After my fix: 
+[classtzn@lnxsrv09 /tmp/tmp.J4qixTDdzY]$ TZ=UTC0 ~/CS35L/Lab4/coreutils-with-bug
+/src/ls -lt --full-time wwi-armistice now now1
+
+-rw-r--r-- 1 classtzn class 0 2018-02-10 23:02:02.512017792 +0000 now1
+-rw-r--r-- 1 classtzn class 0 2018-02-10 23:01:56.179911962 +0000 now
+-rw-r--r-- 1 classtzn class 0 1918-11-11 11:00:00.000000000 +0000 wwi-armistice
+
+------------------------------------------------------------------------------------
+Reproducing the problem in the home directory of SEASnet server
+[classtzn@lnxsrv09 ~]$ touch -d '1918-11-11 11:00 GMT' wwi-armistice
+[classtzn@lnxsrv09 ~]$ touch now
+[classtzn@lnxsrv09 ~]$ sleep 1
+[classtzn@lnxsrv09 ~]$ touch now1
+[classtzn@lnxsrv09 ~]$ TZ=UTC0 ls -lt --full-time wwi-armistice now now1
+-rw-r--r-- 1 classtzn class 0 2054-12-17 17:28:16.000000000 +0000 wwi-armistice
+-rw-r--r-- 1 classtzn class 0 2018-02-11 01:35:29.768115000 +0000 now1
+-rw-r--r-- 1 classtzn class 0 2018-02-11 01:35:22.204129000 +0000 now
+
+Observation:
+Although I did provide the instructions to touch wwi-armistice to be "1918-11-11",
+wwi-armistice is generated with timestamp "2054-12-17" instead.
+
+Reason behind ( and great thanks to TAs):
+The way Unix system calcualte time is that it represents time in seconds since the
+Epoch time (1970 Jan 01 00:00:00), and thus any file created after this time will
+have a positive elapsed seconds with that time, and any file created before that time
+should have a negative elapsed seconds.
+
+However, the SEASnet NFS file system has a unsigned 32-bit time stamp, which means any file
+that is created before the Epoch time, which should have negative elapsed seconds,
+are now casted into unsigned int ( under 2's complement, -1 (int) is UINT_MAX).
+
+In short, any file that is touched to be before the epoch time, will become a file
+with a time stamp in the far future due to this casting issue. (Negative 2's complement int
+interpreted as a large positive unsigned int).
+
+However, I think the SEASnet's ls is doing a good job.
+
+At least from the assembly language's perspective, when comparing two item's
+elapsed seconds, the following assembly code is used:
+
+0x0000000000409bf0 <xstrcoll_mtime+0>:       48 8b 46 70     mov    0x70(%rsi),%rax
+=> 0x0000000000409bf4 <xstrcoll_mtime+4>:       48 39 47 70     cmp    %rax,0x70(%rdi)
+   0x0000000000409bf8 <xstrcoll_mtime+8>:       7f 26   jg     0x409c20 <xstrcoll_mtime+48>
+
+Since cmp is used instead of a sub instruction, the overflow problem that we had
+earlier is handled. As the following jg control flow always look at the SF bit,
+ZF bit AND the OF flag, it will always compare two time stamps in the right order.
+
+An overflow will still occur here because cmp is doing a subtraction, but the OF
+bit will tell us there has been an overflow, and the SF bit will be 1 ( in this case),
+SF^OF will yield 1 to suggest an overflow has occured, and that it should have been a positve
+number to suggest A > B.
+
+In addtional, I tried to touch
+$touch -d '1970-01-01 00:00 UTC' wwi-armistice1 //at the epoch time, so no conversion problem.
+
+[classtzn@lnxsrv09 ~/testFolder]$ ls -lt
+total 0
+-rw-r--r-- 1 classtzn class 0 Feb  6  2105 wwi-armistice
+-rw-r--r-- 1 classtzn class 0 Feb 12 16:52 now1
+-rw-r--r-- 1 classtzn class 0 Feb 12 16:52 now
+-rw-r--r-- 1 classtzn class 0 Dec 31  1969 wwi-armistice1
+
+The result seems to suggest ls on SEASnet is working properly.
+
+
+ 
