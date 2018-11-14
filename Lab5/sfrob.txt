@@ -1,0 +1,325 @@
+Testing the performance of sfrob variants:
+
+Generation of frobnicated text:
+
+$ cp /usr/share/dict/words dict
+$ sort dict > dict_sorted
+
+Write a memfrob function that frobnicates dict:
+
+#include <stdio.h>
+#define _GNU_SOURCE             /* See feature_test_macros(7) */
+#include <string.h>
+void *memfrob(void *s, size_t n);
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+int main() {
+  struct stat status;
+  fstat(0,&status);
+  char* head = malloc(status.st_size*sizeof(char));
+  char* headCopy = head;
+  int count = read(0,head,status.st_size);
+  char* result = (char*) memfrob(headCopy,count);
+
+  for ( int i = 0; i < count; ++i) {
+    printf("%c", *result);
+    result++;
+  }
+
+  free(headCopy);
+}
+
+$ ./memfrob < dict > frobdict
+------------------------------------------------------------------------------
+Estimate the number of comparisons as a function of the number of input linees:
+
+Creating dict of differnt length:
+$ cat dict | head -100 > dict100
+$ cat dict | head -1000 > dict1000
+$ cat dict | head -10000 > dict10000
+$ cat dict | head -100000 > dict100000
+$ cat dict | head -50 > dict50
+$ cat dict | head -500 > dict500
+$ cat dict | head -5000 > dict5000
+$ cat dict | head -50000 > dict50000
+
+
+And then memfrob each of them:
+$ ./memfrob <dict100 >frobdict100
+$ ./memfrob <dict1000 >frobdict1000
+$ ./memfrob <dict10000 >frobdict10000
+$ ./memfrob <dict100000 >frobdict100000
+$ ./sfrobu <frobdict50
+$ ./sfrobu <frobdict500
+$ ./sfrobu <frobdict5000
+$ ./sfrobu <frobdict50000
+
+Adding a global variable into the code and inject it into the cmp function
+yields the result:
+
+lines of input(x)  number of comparisons(y)
+--------------     ----------------------
+      50                  151
+      100                 439
+      500                 2775
+      1000                5849
+      5000                34706
+      10000               78656
+      50000               465961
+      100000              983682
+
+Putting this into Excel:
+Linear trendline: y = 9.8181x - 7996.5 R^2 = 0.9992
+Power trendline: y = 2.1237x^1.1387 R^2 = 0.9991
+
+Although, the R^2 value of linear trendline seems to suggest that there is a proportional
+relationship between lines of input(x) and number of comparisons(y), I highly suspect that
+the relationship should be of the from O(x log x) instead of O(x), since the power trendline
+fits smoothly as well. However, due to limited resources (and skills, I have not done curve
+fitting in ages), I can only yield the conclusion that y must be proportional to x.
+
+-----------------------------------------------------------------------------------------
+* Note: I merged the comparison between sfrob and sfrobu into this section as well.
+
+Start testing the time taken for different variants with redirection:
+*Regular file
+
+sfrob:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time ./sfrob < frobdict > sfrob.output
+
+real    0m0.487s
+user    0m0.468s
+sys     0m0.018s
+
+sfrobs:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time ./sfrobs < frobdict > sfrobs.output
+
+real    0m0.189s
+user    0m0.171s
+sys     0m0.035s
+
+sfrobu:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time ./sfrobu  < frobdict > sfrobu.output
+
+real    0m6.188s
+user    0m0.909s
+sys     0m5.207s
+
+sfrobu -f:
+
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time ./sfrobu -f < frobdict > sfrobu.output
+
+real    0m6.448s
+user    0m1.034s
+sys     0m5.343s
+
+sfrobs -f:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time ./sfrobs -f < frobdict > sfrobs.output
+
+real    0m0.183s
+user    0m0.164s
+sys     0m0.036s
+
+=========================================================================
+General observation under redirection of the output:
+
+1) The general trend is that, the shell script sfrobs is the fastest, sfrob (using buffered I/O) is the second,
+and the sfrobu ( relies system calls) is the slowest in terms of real elapsed seconds.
+*More at the end.
+-------------------------------------------------------------------------------------
+
+Starting testing the time taken from different variants without redirection:
+Printing directly onto the screen:
+
+*Regular File:
+
+sfrob:
+real    0m1.402s
+user    0m0.518s
+sys     0m0.047s
+
+sfrobs:
+real    0m0.999s
+user    0m0.186s
+sys     0m0.089s
+
+sfrobu:
+real    0m5.688s
+user    0m0.909s
+sys     0m4.654s
+
+sfrobu -f:
+real    0m5.805s
+user    0m1.046s
+sys     0m4.656s
+
+sfrobs -f:
+real    0m0.960s
+user    0m0.173s
+sys     0m0.087s
+
+-----------------------------------------------------------------------------------------
+Starting testing the time taken from piping but with redirection of output:
+
+sfrob:
+
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time cat frobdict | ./sfrob > sfrob.output
+
+real    0m0.558s
+user    0m0.469s
+sys     0m0.027s
+
+sfrobs:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time cat frobdict | ./sfrobs >sfrobs.output     
+real    0m0.267s
+user    0m0.180s
+sys     0m0.035s
+
+sfrobs -f:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time cat frobdict | ./sfrobs -f >sfrobs.output
+
+real    0m0.256s
+user    0m0.175s
+sys     0m0.040s
+
+sfrobu:
+
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time cat frobdict | ./sfrobu > sfrobu.output
+
+real    0m8.765s
+user    0m1.574s
+sys     0m7.175s
+
+sfrobu -f:
+[classtzn@lnxsrv09 ~/CS35L/Lab5]$ time cat frobdict | ./sfrobu -f > sfrobu.output
+
+real    0m9.178s
+user    0m1.585s
+sys     0m7.574s
+
+--------------------------------------------------------------------------------------
+Start testing the time taken from piping and printing directly onto the terminal for sfrob and sfrobu:
+
+sfrob:
+real    0m1.198s
+user    0m0.510s
+sys     0m0.077s
+
+sfrobu:
+real    0m8.969s
+user    0m1.582s
+sys     0m7.324s
+
+sfrobu -f:
+real    0m9.282s
+user    0m1.649s
+sys     0m7.595s
+
+sfrobs:
+real    0m1.191s
+user    0m0.179s
+sys     0m0.084s
+
+
+sfrobs -f:
+real    0m0.941s
+user    0m0.168s
+sys     0m0.103s
+
+
+====================================================================================
+A table using real elapsed time:
+
+  \-f     regular file + redirection   regular file / redirection  piping + redirection  piping / redirection
+          -------------------------    --------------------------  -------------------   --------------------
+sfrob       0.487s                             1.402s                  0.558s               1.198s
+sfrobu      6.188s(6.448s)                     5.688s(5.805s)          7.175s(9.178s)       9.969s(9.282s)
+sfobs       0.189s(0.183s)                     0.999s(0.960s)          0.267s(0.256s)       1.191s(0.941s)
+
+-------------------------------------------------------------------------------------------------------------
+Explanations of labels and values in brackets:
+1. The second value in brackets are the real elapsed seconds when -f options are enabled with the same testing
+   options.
+2. regular file + redirection means, the file size is known at runtime and redirection (copying to another file)
+   is enabled.
+   Conversely, regular file / redirection means, the filesize is known at runtime, but it is printing directly
+   to the output.
+   piping + redirection means, the file is cat/echo and then pipelined into variants of sfrob, while copying the
+   output to another file.
+   Conversely, piping / redirection means the files is cat\echo and then pipelines into variants of sfrob,
+   while printing directly onto the screen.
+
+==========================================================================================================
+General conclusions:
+
+Performance ranking: sfrobs >      sfrob >          sfrobu
+                     script        buffered        unbuffered
+                               I/O (but limited)       I/O
+			       
+i. For sfrob, the real time difference between processing a regular file and FIFO pipie is small, which is as expected,
+   since I did not make any special processing to differentiate the 2 cases.
+
+   For sfrobu, there is a significant difference, as sfrobu will read only once if it is a regular file with
+   known fixed size (which is one of the test case), while it has to read 1 byte at a time if it is passed through
+   from a pipeline. Thus, the difference between number of read system calls probably has led to the significant
+   increases in time from 6.188s to 7.175s; 5.688s to 9.969s respectively.
+
+   Furthermore, the increase in sys time between regular file and piping with or without redirection corroborate
+   with the above conclusion, since the sys time (regular file with redirection) increases from 5.207s to
+   7.595s (pipeline with redirection).
+
+   For sfrobs, there is some difference between regular file and piping from the data's point of view, although
+   it is also possible that the time difference is due to the server usage, which can greatly affect the real
+   elapsed time since the 09 server is shared among many users after all.
+
+ii. The difference between whether -f options are enabled is not big (but it leads to a reduction in performance
+    nevertheless, taking approximately 0.3sec more on average for the test case), it seems that making extra toupper()
+    calls affect the performance less than the system calls, which are performed by the kernel.
+    
+    From CS33 knowledge, this kind of makes sense as the system calls has a large overhead in order to switch to kernel.
+
+iii. Consistent with my observation in the lab part, printing to the terminal using buffered I/O will take more
+    time when the output is redirected to another file. This trend is consistent for all variants of sfrob.
+
+iv. (Directly answering to "Measure any differences in performance between sfrob and sfrobu using the time command.")
+
+    Under all combinations of options, sfrob is much faster than sfrobu.
+
+    In terms of user time, sfrob still takes much shorter time than sfrobu.
+
+    In terms of sys time, sfrob takes much much shorter time than sfrobu. On average, it is a 4-second difference.
+
+    However, sfrob's real time and sys time will increase, depending on whether there is redirection of output.
+    This is probably because printing to the screen using buffered I/O will result in more write calls than copying
+    the output to the file ( shown in lab section).
+
+    Whereas sfrobu's real time and sys time is independent of the output option, due to the implementation is to
+    write the byte one by one mandatorily.
+
+    On the other hand, sfrobu' real time and sys time is dependent of the input, as its time will increase if the file
+    is sent though a pipeline, and decrease if it is a known fixed-size regular file.
+
+    Similarly, sfrob's real time is independent of the input, since its implementation deal with both cases in the same
+    way.
+
+                                        sfrob      sfrobu
+			               --------   --------
+    regular file + redirection
+                               real    0m0.487s    0m6.188s
+                               user    0m0.468s    0m0.909s
+                               sys     0m0.018s    0m5.207s
+    regular file / redirection
+                               real    0m1.402s    0m5.688s
+                               user    0m0.518s    0m1.046s
+                               sys     0m0.047s    0m4.654s
+    pipeline + redirection
+                               real    0m0.558s    0m8.765s
+                               user    0m0.469s    0m1.574s
+                               sys     0m0.027s    0m7.715s
+    pipeline / redirection
+                               real    0m1.198s    0m8.969s
+                               user    0m0.510s    0m1.582s
+                               sys     0m0.077s    0m7.324s

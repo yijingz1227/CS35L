@@ -1,0 +1,268 @@
+Lab 5:
+
+1. Write a C transiliteration program that uses buffered I/O from <stdio.h>
+
+   General Approach:
+   The program needs to composed of the following components
+   1) test if stdin is an empty file
+   2) test if the from string contains duplicate characters
+   3) test if the from string and to string have the same length
+   4) test if the special characters are considered literally
+   5) print loop, for each character, check if it is an element in the
+      from string:
+      case 1: it is not in the from string -> print directly
+      case 2: it is in the from string ->from[i]
+              then print to[i] instead.
+
+2. Write the syscall version.
+
+3. Using the strace command to track the number of syscalls made by tr2b and
+   tr2u when a) redirecting into another file b) printing to the terminal
+   directly.
+
+Generation of the 5,000,000-byte file
+I used: $ bit64 /dev/urandom | head -c 5000000 > ref.txt
+
+*The addition command bit64 is used is to avoid some special characters that
+will cause printing to terminal to be interrupted.
+
+For instance, C-E (character number 5) will cause the program to print the
+name of the terminal (like Putty)  and will affect the results of the strace
+command. 
+
+tr2b:
+a)
+$ strace -c ./tr2b "ABCD" "0123" <ref.txt >tr2b.output 2>>lab.txt
+
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 68.47    0.008514          14       611           write
+ 27.21    0.003384           6       613           read
+  1.37    0.000170          19         9           mmap
+  0.69    0.000086          22         4           mprotect
+  0.48    0.000060          15         4           fstat
+  0.47    0.000059          59         1           munmap
+  0.41    0.000051          26         2           open
+  0.23    0.000028          28         1           execve
+  0.21    0.000026          26         1         1 access
+  0.20    0.000025          13         2           close
+  0.16    0.000020          20         1           brk
+  0.10    0.000012          12         1           arch_prctl
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.012435                  1250         1 total
+
+b)
+$ strace -c ./tr2b "ABCD" "0123" <ref.txt 2>>lab.txt
+
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 99.01    0.245809           4     64936           write
+  0.99    0.002460           4       613           read
+  0.00    0.000000           0         2           open
+  0.00    0.000000           0         2           close
+  0.00    0.000000           0         4           fstat
+  0.00    0.000000           0         9           mmap
+  0.00    0.000000           0         4           mprotect
+  0.00    0.000000           0         1           munmap
+  0.00    0.000000           0         1           brk
+  0.00    0.000000           0         1         1 access
+  0.00    0.000000           0         1           execve
+  0.00    0.000000           0         1           arch_prctl
+------ ----------- ----------- --------- --------- ----------------
+
+tr2u:
+a)
+$ strace -c ./tr2u "ABCD" "0123" <ref.txt >tr2u.output 2>>lab.txt
+
+100.00    0.248269                 65575         1 total
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 55.70   24.727319           5   5000000           write
+ 44.30   19.666829           4   5000002           read
+  0.00    0.000000           0         2           open
+  0.00    0.000000           0         2           close
+  0.00    0.000000           0         2           fstat
+  0.00    0.000000           0         7           mmap
+  0.00    0.000000           0         4           mprotect
+  0.00    0.000000           0         1           munmap
+  0.00    0.000000           0         1           brk
+  0.00    0.000000           0         1         1 access
+  0.00    0.000000           0         1           execve
+  0.00    0.000000           0         1           arch_prctl
+------ ----------- ----------- --------- --------- ----------------
+100.00   44.394148              10000024         1 total
+
+b)
+$ strace -c ./tr2u "ABCD" "0123" <ref.txt 2>>lab.txt
+
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 55.38   27.598481           6   5000000           write
+ 44.62   22.236591           4   5000002           read
+  0.00    0.000040           6         7           mmap
+  0.00    0.000032           8         4           mprotect
+  0.00    0.000014           7         2           open
+  0.00    0.000011          11         1           munmap
+  0.00    0.000007           4         2           close
+  0.00    0.000007           4         2           fstat
+  0.00    0.000007           7         1         1 access
+  0.00    0.000003           3         1           brk
+  0.00    0.000003           3         1           arch_prctl
+  0.00    0.000000           0         1           execve
+------ ----------- ----------- --------- --------- ----------------
+100.00   49.835196              10000024         1 total
+
+Some analysis to the results:
+
+1) In general, tr2u issues more syscall than tr2b in both scenarios.
+   This is expected, as the meaning of buffered I/O such as getchar() and
+   putchar() is to reduce the number of syscalls by temporarily storing the
+   requests into a buffer and then read/write when there are enough of them.
+
+2) For tr2b, more syscalls, write in particular, are issued when printing to the
+   terminal directly than redirecting the output to the file.
+
+   This is probably because when printing to the terminal, the users
+   expect smooth output instead of sudden burst of information, whereas such
+   custom does not apply to printing to a file, since the user is most likely
+   to take a look at the ouput file after the process.
+
+   Thus, if we look at the difference in syscalls make by tr2b with a)
+   redirection, and b) printing directly, we can see the difference.
+
+   Extraction of btrace_A:
+   A)
+   write(1, "1uwWVbIx9SzQgu020eokU9MkRR5wNjsX"..., 4096) = 4096
+   read(0, "7M3mdV2/o0mOdW3csCOBy75H2UfGqsbo"..., 8192) = 8192
+   write(1, "Gjq1th07sV36Szs5XlVgyJ3krsEP2lqv"..., 4096) = 4096
+   write(1, "7M3mdV2/o0mOdW3cs3O2y75H2UfGqsbo"..., 4096) = 4096
+   read(0, "IDBaveS32krYqpKs\nyccsaXePduXdtsY"..., 8192) = 8192
+   write(1, "WydK4i4Gud2+3l3Y4u5LZYb4J+9HErW\n"..., 4096) = 4096
+   write(1, "I42aveS32krYqpKs\nyccsaXePduXdtsY"..., 4096) = 4096
+   read(0, "20tC4L2PiH0ax2jLLBIQ3fPTlRW7tfbX"..., 8192) = 8192
+   
+   When can see that, read and write are done in regular and large
+   packets (4KB or 8KB).
+
+   On the other hand,
+   Extraction of btrace_B:
+   B)
+   write(1, "1uwWVbIx9SzQgu020eokU9MkRR5wNjsX"..., 77) = 77 
+   write(1, "gMwQUFes/5pl3wOU1n4mjcl+L+z0ZJei"..., 77) = 77
+   write(1, "h3wvEIQUfPni4fVUo3ZQMYZYGe33tvpJ"..., 77) = 77 
+   write(1, "nhYE44gTfeW43tdLsc87m3tdWQ/EK71S"..., 77) = 77
+   write(1, "Z31dRpk/9ig6hJmGuV+/6mUz1c04Lhpc"..., 77) = 77
+   write(1, "zF422xd3vtQM3p0YsH/L0lgmbkI4hE0h"..., 77) = 77
+   write(1, "lXHdOMlsNkwX1TLt1SF170VJ1Xochd4v"..., 77) = 77
+   write(1, "0tG5JuyfNKyKP8VE+hK/ojd4WGW13PvT"..., 77) = 77
+   write(1, "qyZq4gNvaqVJstYbZWqP3OumpWjJ60lm"..., 77) = 77
+   write(1, "3PW2o2+5hJiZ1T5W/xE01xRUiQvkrzTt"..., 77) = 77
+   write(1, "1FzW89qpianrYWrqKEyptON/J3kxjsx3"..., 77) = 77
+   write(1, "ldf5jak7IL80GWfjf05IxuQWM3wmTvdK"..., 77) = 77
+   write(1, "j1YtUsSUJLHL9fa4aSUsWmk8fahgV1qf"..., 77) = 77
+   write(1, "yIKXvlxbOE9IrlRfdi1oEb/xo4E+a72m"..., 77) = 77
+   write(1, "GwVEo1Wl0F1o4/MqIOJK8VbNejkJ8HVP"..., 77) = 77
+   write(1, "zPXL7F1cj4EJhL0gb7SLJuh726oWEmdJ"..., 77) = 77
+   write(1, "TM7Y3Xn5S2dH+XQQc6j3J1/FFJNSGQsX"..., 77) = 77
+   write(1, "1ovmVtfsic1Pb1b6J20/8H07Rqqb482W"..., 77) = 77
+   write(1, "N3vlIkQReN5HcMEjV5JpnKuwrG8q/qKq"..., 77) = 77
+   write(1, "vkUxs93jk5LWsLolmg5prYfO9qdb3ToG"..., 77) = 77
+   write(1, "ujpg4SMQqWrdPz4IgOQKd17rrrnexNqR"..., 77) = 77
+   ....
+   read(0, "7M3mdV2/o0mOdW3csCOBy75H2UfGqsbo"..., 8192) = 8192
+   ....
+
+   We can see while read syscalls are stil done in regular large packets,
+   the write syscalls are done in much smaller packets (77) to ensure that
+   user can see the smooth flow of the output.
+
+   If the syscalls are still made in large packets, we would have seen
+   sudden bursts of information, which is probably not very useful when the
+   user wants the ouput to be shown on the terminal.
+
+3) tr2u issues identical numbers of syscalls in both scenarios.
+
+   The explanation for this observation is quite self-evident, as the spec
+   has asked us to issue syscalls of size 1 and none of the buffered I/O
+   is allowed to be used. The programs will do exactly what we demanded,
+   without any sort of optimizations, read and write each byte at a time.
+
+   Since the ref.txt file is a 5,000,000-byte file, 5,000,000 writes are expected
+   and the 2 extra read (on top of the anticipated 5,000,000 read)
+   is most likely from the open() and the final read beyond EOF.
+
+   Since the file I have provided is identical for both scenarios,
+   I would expect identical number of syscalls to be issues in either scenario.
+
+
+4.
+Observation: It is very difficult to measure the time difference when using
+a small testcase, (as shown below), so in order to get a better estimate,
+I will use the ref.txt generated in step 3.
+
+----------------------------------------------------------------------------
+Redirecting output:
+$ time ./tr2b "ABCD" "1234" >tr2b.output <ref.txt
+
+real    0m0.238s
+user    0m0.220s
+sys     0m0.017s
+
+
+$ time ./tr2u "ABCD" "1234" >tr2u.output <ref.txt
+
+real    0m9.553s
+user    0m1.410s
+sys     0m8.076s
+
+When copying the same amount of data and redirecting the output to another file,
+tr2b is 98.2% faster than tr2u. (in terms of real elapsed seconds).
+---------------------------------------------------------------------------------
+Print directly :
+$ time ./tr2b "ABCD" "1234" <ref.txt
+
+real    0m0.871s
+user    0m0.180s
+sys     0m0.118s
+
+$ time ./tr2u "ABCD" "1234" <ref.txt
+
+real    0m8.273s
+user    0m1.439s
+sys     0m6.819s
+
+When copying the same amount of data and print to the terminal directly,
+tr2b is 94.0% faster than tr2u.(in terms of real elapsed seconds)
+--------------------------------------------------------------------------
+In terms of user CPU time and system CPU time:
+
+1) user CPU time: is the time spent on running program's codes
+   It is clear that for each variant of tr ( that is either tr2b or tr2u),
+   the user CPU time does not change (is independent of) whether I have
+   redirected the output or printed directly onto the screen.
+   (0.220s vs. 0.180s for tr2b 1.410s vs 1.439s for tr2u)
+
+   However, it is still unclear to me why user CPU time increases from 0.180s
+   to 1.439s (ish) between tr2b to tr2u. The basic logic of the two variants
+   are similar and I only micro-tuned to fit the requirement of the assignment.
+   A bold guess will be that because tr2u issues more system calls, and the
+   context switches between user space and kernal space accumulates and leads
+   to this time difference.
+
+2) system CPU time: is the time spent on running codes in OS's kernal
+
+   As expected, the tr2u variant spends the majority of the time on running codes
+   in OS's kernal, since tr2u issues 5,000,000*2 + 2 system calls at the very least.
+
+   Comparing to tr2b, tr2u has longer system CPU time, which is consistent with the
+   observation in step3, as tr2b (printing to screen) only issues 70,000 system calls
+   which is much much fewer than tr2u (it is self-evident in numbers).
+
+   The sys time difference between tr2b (redirection) & tr2b (printing) is also
+   coherent with my observation in step3, which suggests more system calls will be
+   made (write()) when printing to the screen. The increase in sys time from 0.118s
+   from 0.017s is probably the direct result of those extra system calls (writes).
+
+
+
+   
